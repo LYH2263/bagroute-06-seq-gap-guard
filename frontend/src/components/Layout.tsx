@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { api } from "../api/client";
+import { STOPS_CHANGED } from "../events";
 
 const stripLinks = [
   ["/pack", "装袋"],
@@ -29,6 +30,13 @@ export default function Layout() {
   const [rid, setRid] = useState<number | "">("");
   const [stops, setStops] = useState<Stop[]>([]);
   const [weights, setWeights] = useState<Weight[]>([]);
+  const [stopsTick, setStopsTick] = useState(0);
+
+  useEffect(() => {
+    const bump = () => setStopsTick((t) => t + 1);
+    window.addEventListener(STOPS_CHANGED, bump);
+    return () => window.removeEventListener(STOPS_CHANGED, bump);
+  }, []);
 
   useEffect(() => {
     api<Route[]>("/routes").then((r) => {
@@ -40,7 +48,7 @@ export default function Layout() {
   useEffect(() => {
     if (rid === "") return;
     api<Stop[]>(`/stops?route_id=${rid}`).then(setStops).catch(() => setStops([]));
-  }, [rid, loc.pathname]);
+  }, [rid, loc.pathname, stopsTick]);
 
   useEffect(() => {
     api<Weight[]>("/weights").then(setWeights).catch(() => setWeights([]));

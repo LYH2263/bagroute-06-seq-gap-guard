@@ -230,6 +230,21 @@ button {
 .mono { font-family: "IBM Plex Mono", monospace; }
 .err { color: #ff9b7a; } .ok { color: #b6e356; }
 
+/* inline controls on the stops page */
+.link-btn {
+  background: transparent;
+  color: var(--route-leaf);
+  border: 1px solid #3a4a32;
+  border-radius: 4px;
+  padding: .15rem .45rem;
+  font-size: .75rem;
+  font-weight: 600;
+  margin-left: 4px;
+}
+.link-btn:disabled { color: var(--route-muted); border-color: var(--line); cursor: default; opacity: .6; }
+.stop-form input { min-width: 0; }
+.hint { color: var(--route-muted); font-size: .78rem; margin-top: .6rem; }
+
 /* page helpers — no card-grid dashboard */
 .route-strip {
   display: flex; gap: 12px; overflow-x: auto; padding: .5rem 0;

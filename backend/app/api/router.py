@@ -10,12 +10,29 @@ from app.schemas.schemas import (
     PackRequest,
     RejectOut,
     RouteOut,
+    StopCreate,
+    StopMove,
     StopOut,
+    StopSeqUpdate,
     WeightOut,
 )
 from app.services.pack_engine import StopItem, pack_route
+from app.services.stops import (
+    SeqError,
+    StopLookupError,
+    add_stop,
+    list_stops,
+    move_stop,
+    resequence,
+    update_stop_seq,
+)
 
 api_router = APIRouter()
+
+
+def _seq_error(exc: SeqError) -> HTTPException:
+    # 409: the request conflicts with the route's seq-continuity invariant.
+    return HTTPException(status_code=409, detail=str(exc))
 
 
 @api_router.get("/health")
@@ -30,10 +47,73 @@ def routes(db: Session = Depends(get_db)):
 
 @api_router.get("/stops", response_model=list[StopOut])
 def stops(route_id: int | None = None, db: Session = Depends(get_db)):
-    q = select(SubscriberStop).order_by(SubscriberStop.route_id, SubscriberStop.seq)
+    q = select(SubscriberStop).order_by(
+        SubscriberStop.route_id, SubscriberStop.seq, SubscriberStop.id
+    )
     if route_id is not None:
         q = q.where(SubscriberStop.route_id == route_id)
     return db.scalars(q).all()
+
+
+@api_router.post("/stops", response_model=StopOut, status_code=201)
+def create_stop(body: StopCreate, db: Session = Depends(get_db)):
+    try:
+        stop = add_stop(
+            db,
+            route_id=body.route_id,
+            seq=body.seq,
+            name=body.name,
+            weight_kg=body.weight_kg,
+            volume_l=body.volume_l,
+        )
+    except StopLookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except SeqError as exc:
+        db.rollback()
+        raise _seq_error(exc)
+    db.commit()
+    db.refresh(stop)
+    return stop
+
+
+@api_router.patch("/stops/{stop_id}", response_model=StopOut)
+def patch_stop(stop_id: int, body: StopSeqUpdate, db: Session = Depends(get_db)):
+    try:
+        stop = update_stop_seq(db, stop_id, body.seq)
+    except StopLookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except SeqError as exc:
+        db.rollback()
+        raise _seq_error(exc)
+    db.commit()
+    db.refresh(stop)
+    return stop
+
+
+@api_router.post("/stops/{stop_id}/move", response_model=StopOut)
+def move_stop_route(stop_id: int, body: StopMove, db: Session = Depends(get_db)):
+    try:
+        stop = move_stop(db, stop_id, body.direction)
+    except StopLookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except SeqError as exc:
+        db.rollback()
+        raise _seq_error(exc)
+    db.commit()
+    db.refresh(stop)
+    return stop
+
+
+@api_router.post("/routes/{route_id}/stops/resequence", response_model=list[StopOut])
+def reseq_route(route_id: int, db: Session = Depends(get_db)):
+    try:
+        stops = resequence(db, route_id)
+    except StopLookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    db.commit()
+    for s in stops:
+        db.refresh(s)
+    return list_stops(db, route_id)
 
 
 @api_router.post("/pack", response_model=list[BagOut])
@@ -104,7 +184,11 @@ def pack(body: PackRequest, db: Session = Depends(get_db)):
                     weight_kg=i.weight_kg,
                     volume_l=i.volume_l,
                 )
-                for i in db.scalars(select(BagItem).where(BagItem.bag_id == b.id)).all()
+                for i in db.scalars(
+                    select(BagItem)
+                    .where(BagItem.bag_id == b.id)
+                    .order_by(BagItem.id)
+                ).all()
             ],
         )
         for b in out_bags
@@ -116,7 +200,9 @@ def bags(db: Session = Depends(get_db)):
     rows = db.scalars(select(PackBag).order_by(PackBag.route_id, PackBag.bag_index)).all()
     out = []
     for b in rows:
-        items = db.scalars(select(BagItem).where(BagItem.bag_id == b.id)).all()
+        items = db.scalars(
+            select(BagItem).where(BagItem.bag_id == b.id).order_by(BagItem.id)
+        ).all()
         out.append(
             BagOut(
                 id=b.id,
