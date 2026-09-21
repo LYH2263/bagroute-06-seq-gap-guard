@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -17,6 +17,7 @@ class DeliveryRoute(Base):
 
 class SubscriberStop(Base):
     __tablename__ = "subscriber_stops"
+    __table_args__ = (UniqueConstraint("route_id", "seq", name="uq_stop_route_seq"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     route_id: Mapped[int] = mapped_column(ForeignKey("delivery_routes.id"))
     seq: Mapped[int] = mapped_column(Integer)

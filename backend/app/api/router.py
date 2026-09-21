@@ -10,12 +10,20 @@ from app.schemas.schemas import (
     PackRequest,
     RejectOut,
     RouteOut,
+    StopCreate,
     StopOut,
+    StopSeqUpdate,
     WeightOut,
 )
 from app.services.pack_engine import StopItem, pack_route
+from app.services.stop_ops import SeqError, add_stop, resequence, update_seq
 
 api_router = APIRouter()
+
+
+def _http_error(e: SeqError) -> HTTPException:
+    code = 404 if str(e) in ("路线不存在", "站点不存在") else 400
+    return HTTPException(code, str(e))
 
 
 @api_router.get("/health")
@@ -34,6 +42,43 @@ def stops(route_id: int | None = None, db: Session = Depends(get_db)):
     if route_id is not None:
         q = q.where(SubscriberStop.route_id == route_id)
     return db.scalars(q).all()
+
+
+@api_router.post("/stops", response_model=StopOut, status_code=201)
+def create_stop(body: StopCreate, db: Session = Depends(get_db)):
+    try:
+        stop = add_stop(db, body.route_id, body.name, body.weight_kg, body.volume_l, body.seq)
+        db.commit()
+    except SeqError as e:
+        db.rollback()
+        raise _http_error(e)
+    db.refresh(stop)
+    return stop
+
+
+@api_router.patch("/stops/{stop_id}", response_model=StopOut)
+def patch_stop(stop_id: int, body: StopSeqUpdate, db: Session = Depends(get_db)):
+    try:
+        stop = update_seq(db, stop_id, body.seq)
+        db.commit()
+    except SeqError as e:
+        db.rollback()
+        raise _http_error(e)
+    db.refresh(stop)
+    return stop
+
+
+@api_router.post("/routes/{route_id}/stops/resequence", response_model=list[StopOut])
+def resequence_route(route_id: int, db: Session = Depends(get_db)):
+    try:
+        rows = resequence(db, route_id)
+        db.commit()
+    except SeqError as e:
+        db.rollback()
+        raise _http_error(e)
+    for s in rows:
+        db.refresh(s)
+    return rows
 
 
 @api_router.post("/pack", response_model=list[BagOut])

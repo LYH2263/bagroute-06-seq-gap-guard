@@ -20,6 +20,18 @@ class StopOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class StopCreate(BaseModel):
+    route_id: int
+    name: str
+    weight_kg: float
+    volume_l: float
+    seq: int | None = None
+
+
+class StopSeqUpdate(BaseModel):
+    seq: int
+
+
 class BagItemOut(BaseModel):
     stop_id: int
     stop_name: str

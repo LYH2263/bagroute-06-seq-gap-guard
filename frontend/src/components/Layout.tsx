@@ -42,6 +42,15 @@ export default function Layout() {
     api<Stop[]>(`/stops?route_id=${rid}`).then(setStops).catch(() => setStops([]));
   }, [rid, loc.pathname]);
 
+  // 站点页新增 / 改序号 / 重排后刷新珠串，保证时间线序号与列表一致。
+  useEffect(() => {
+    if (rid === "") return;
+    const refresh = () =>
+      api<Stop[]>(`/stops?route_id=${rid}`).then(setStops).catch(() => setStops([]));
+    window.addEventListener("bagroute:stops-changed", refresh);
+    return () => window.removeEventListener("bagroute:stops-changed", refresh);
+  }, [rid]);
+
   useEffect(() => {
     api<Weight[]>("/weights").then(setWeights).catch(() => setWeights([]));
     const t = setInterval(() => {
